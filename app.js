@@ -405,7 +405,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ═══════════════════════════════════════════════════════════════════
 // GRAPH API
 // ═══════════════════════════════════════════════════════════════════
-async function gFetch(url, opts = {}) {
+async function gFetch(url, opts = {}, _attempt = 0) {
   const token  = await getToken();
   const full   = url.startsWith('http') ? url : `https://graph.microsoft.com/v1.0${url}`;
   const method = (opts.method || 'GET').toUpperCase();
@@ -422,6 +422,14 @@ async function gFetch(url, opts = {}) {
       ...(opts.headers || {})
     }
   });
+  // Transientes Throttling/Unavailable (429/503/504) → kurzer Backoff-Retry (max. 3×)
+  if ((res.status === 429 || res.status === 503 || res.status === 504) && _attempt < 3) {
+    const retryAfter = parseFloat(res.headers.get('Retry-After')) || 0;   // Sekunden, falls vom Server gesetzt
+    const waitMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(8000, 500 * 2 ** _attempt);
+    console.warn(`Graph ${res.status} – Retry ${_attempt + 1}/3 in ${waitMs} ms (${method} ${full})`);
+    await new Promise(r => setTimeout(r, waitMs));
+    return gFetch(url, opts, _attempt + 1);
+  }
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
     const detail  = errBody?.error?.message || errBody?.error?.code || res.statusText || res.status;
@@ -434,6 +442,19 @@ const gGet   = url        => gFetch(url);
 const gPost  = (url, b)   => gFetch(url, { method: 'POST',   body: JSON.stringify(b) });
 const gPatch = (url, b)   => gFetch(url, { method: 'PATCH',  body: JSON.stringify(b) });
 const gDel   = url        => gFetch(url, { method: 'DELETE' });
+
+// Holt ALLE Seiten einer Graph-Collection (folgt @odata.nextLink statt bei $top=999 abzuschneiden).
+// cap = hartes Sicherheitslimit gegen Endlosschleifen / Riesenlisten.
+async function gGetAll(url, cap = 5000) {
+  let out = [], next = url;
+  while (next) {
+    const page = await gFetch(next);
+    out = out.concat(page?.value || []);
+    next = page?.['@odata.nextLink'] || null;
+    if (out.length >= cap) { console.warn(`gGetAll: cap ${cap} erreicht, Paging abgebrochen`); break; }
+  }
+  return out;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // STARTUP
@@ -1195,21 +1216,29 @@ async function loadAntraege() {
     $id('antraege-loading').textContent = 'Liste "' + LIST_ANTRAEGE + '" nicht gefunden.';
     return;
   }
+  // Cache: noch frisch (< CACHE_TTL) und Daten vorhanden → direkt aus dem Speicher rendern, kein Fetch.
+  // Der ↻-Button setzt _cacheTs[currentView]=0 und erzwingt so einen Neuabruf.
+  if (allAntraege.length && Date.now() - _cacheTs.antraege < CACHE_TTL) {
+    $id('antraege-loading').classList.add('hidden');
+    renderAntraege();
+    updateOpenBadge();
+    return;
+  }
   $id('antraege-loading').classList.remove('hidden');
   $id('antraege-list').innerHTML = '';
 
   try {
     // Alle Items laden – client-seitig filtern (SP Graph-Filter mit encodeURIComponent('@') bricht den OData-Filter)
     const apiUrl = `/sites/${siteId}/lists/${listAntragId}/items?$expand=fields($select=*)&$top=999`;
-    let data;
+    let rawItems;
     try {
-      data = await gGet(apiUrl);
+      rawItems = await gGetAll(apiUrl);   // folgt @odata.nextLink → keine stille Begrenzung bei >999
     } catch(loadErr) {
       console.warn('Items-Abruf fehlgeschlagen:', loadErr.message);
       throw loadErr;
     }
     // Client-seitig sortieren — vermeidet 400 bei nicht-indizierten Feldern
-    allAntraege = (data.value || []).sort((a, b) => {
+    allAntraege = rawItems.sort((a, b) => {
       const da = new Date(a.fields?.Created || a.createdDateTime || 0);
       const db = new Date(b.fields?.Created || b.createdDateTime || 0);
       return db - da;
@@ -1840,6 +1869,12 @@ async function loadLizenzen() {
     $id('lizenzen-loading').textContent = 'Liste "' + LIST_LIZENZEN + '" nicht gefunden oder kein Zugriff.';
     return;
   }
+  // Cache: noch frisch → direkt rendern, kein Fetch (↻ erzwingt Neuabruf via _cacheTs=0)
+  if (allLizenzen.length && Date.now() - _cacheTs.lizenzen < CACHE_TTL) {
+    $id('lizenzen-loading').classList.add('hidden');
+    renderLizenzen();
+    return;
+  }
   $id('lizenzen-loading').classList.remove('hidden');
   $id('lizenzen-wrap').innerHTML = '';
 
@@ -1850,16 +1885,23 @@ async function loadLizenzen() {
     if (spToken && COL.nutzer) {
       // SP REST: $expand=KIUser gibt {ID, Title, EMail} pro User zurück
       const nutzerField = COL.nutzer;
-      const restUrl = `https://${SP_HOST}${SP_SITE_PATH}/_api/web/lists/getbytitle('${LIST_LIZENZEN}')/items` +
+      let restUrl = `https://${SP_HOST}${SP_SITE_PATH}/_api/web/lists/getbytitle('${LIST_LIZENZEN}')/items` +
         `?$select=*,${nutzerField}/ID,${nutzerField}/Title,${nutzerField}/EMail` +
         `&$expand=${nutzerField}&$top=999`;
-      const res = await fetch(restUrl, {
-        headers: { 'Authorization': `Bearer ${spToken}`, 'Accept': 'application/json;odata=verbose' }
-      });
-      if (!res.ok) throw new Error(`SP REST ${res.status}`);
-      const restData = await res.json();
+      // SP REST pagt über d.__next → alle Seiten einsammeln statt bei 999 abzuschneiden
+      let restResults = [];
+      while (restUrl) {
+        const res = await fetch(restUrl, {
+          headers: { 'Authorization': `Bearer ${spToken}`, 'Accept': 'application/json;odata=verbose' }
+        });
+        if (!res.ok) throw new Error(`SP REST ${res.status}`);
+        const restData = await res.json();
+        restResults = restResults.concat(restData?.d?.results || []);
+        restUrl = restData?.d?.__next || null;
+        if (restResults.length >= 5000) { console.warn('Lizenzen: cap 5000 erreicht'); break; }
+      }
       // SP REST liefert Felder flach (nicht in fields{}); für Kompatibilität in fields{} einpacken
-      allLizenzen = (restData?.d?.results || []).map(item => {
+      allLizenzen = restResults.map(item => {
         // Personenfeld normalisieren: SP REST gibt Array oder einzelnes Objekt zurück
         const rawUsers = item[nutzerField]?.results || (item[nutzerField] ? [item[nutzerField]] : []);
         // Emails in spIdToEmail eintragen
@@ -1877,8 +1919,7 @@ async function loadLizenzen() {
       console.log('✓ Lizenzen via SP REST geladen (mit UPNs):', allLizenzen.length);
     } else {
       // Fallback: Graph API (keine direkten EMail-Daten in Personenfeldern)
-      const data = await gGet(`/sites/${siteId}/lists/${listLizenzId}/items?$expand=fields($select=*)&$top=999`);
-      allLizenzen = data.value || [];
+      allLizenzen = await gGetAll(`/sites/${siteId}/lists/${listLizenzId}/items?$expand=fields($select=*)&$top=999`);
       // spUserMap aus vorhandenen Namen befüllen (ohne E-Mail)
       for (const item of allLizenzen) {
         const f    = item.fields || {};
@@ -2647,12 +2688,17 @@ async function loadRegister() {
     $id('register-loading').textContent = 'Liste "' + LIST_REGISTER + '" nicht gefunden oder kein Zugriff.';
     return;
   }
+  // Cache: noch frisch → direkt rendern, kein Fetch (↻ erzwingt Neuabruf via _cacheTs=0)
+  if (allRegister.length && Date.now() - _cacheTs.register < CACHE_TTL) {
+    $id('register-loading').classList.add('hidden');
+    renderRegister();
+    return;
+  }
   $id('register-loading').classList.remove('hidden');
   $id('register-wrap').innerHTML = '';
 
   try {
-    const data = await gGet(`/sites/${siteId}/lists/${listRegisterId}/items?$expand=fields($select=*)&$top=999`);
-    allRegister = data.value || [];
+    allRegister = await gGetAll(`/sites/${siteId}/lists/${listRegisterId}/items?$expand=fields($select=*)&$top=999`);
     _cacheTs.register = Date.now();
     renderRegister();
   } catch(e) {
@@ -2963,6 +3009,20 @@ function showToast(msg, type = 'success', duration = 4000) {
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════
 function $id(id) { return document.getElementById(id); }
+
+// Debounce: verzögert die Ausführung bis `ms` nach dem letzten Aufruf — entlastet Suchfelder,
+// die sonst bei jedem Tastendruck das komplette Card-Grid per innerHTML neu aufbauen würden.
+function debounce(fn, ms = 150) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+const _dSearchAntraege = debounce(filterAntraege, 150);
+const _dSearchRegister = debounce(filterRegister, 150);
+const _dSearchLizenzen = debounce(renderLizenzen, 150);
+// Als Funktionsdeklaration exportiert, damit die inline-oninput-Attribute sie zuverlässig auflösen
+function searchAntraege() { _dSearchAntraege(); }
+function searchRegister() { _dSearchRegister(); }
+function searchLizenzen() { _dSearchLizenzen(); }
 
 // Konvertiert Formulareingabe in den von der Graph API erwarteten Typ
 function spValue(type, v) {
