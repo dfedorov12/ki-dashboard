@@ -3,224 +3,39 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>DIHAG · KI-Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="style.css"/>
-  <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
+  <title>DIHAG · KI-Dashboard ist umgezogen</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>"/>
+  <!-- Fallback ohne JavaScript (ohne Query-Übernahme) -->
+  <meta http-equiv="refresh" content="3;url=https://richtlinienmanagement.dihag-extern.com/ki/"/>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1e2939;
+           display: flex; flex-direction: column; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; gap: 14px; text-align: center; padding: 20px; }
+    .icon { font-size: 48px; }
+    h1 { font-size: 1.25rem; margin: 0; }
+    p  { color: #6b7280; font-size: .95rem; max-width: 460px; line-height: 1.6; margin: 0; }
+    a.btn { background: #1a56db; color: #fff; text-decoration: none; padding: 10px 24px;
+            border-radius: 8px; font-weight: 600; font-size: .95rem; }
+  </style>
 </head>
 <body>
-
-<!-- Boot Screen -->
-<div id="boot">
-  <div class="boot-logo">🤖</div>
-  <div class="boot-title">KI-Dashboard</div>
-  <div class="boot-sub" id="boot-sub">DIHAG Gruppe · KI-Governance</div>
-  <div class="boot-spinner" id="boot-spinner"></div>
-  <div class="boot-err" id="boot-err"></div>
-  <button class="boot-btn" id="boot-btn" onclick="doLogin()" style="display:none">Mit Microsoft anmelden</button>
-</div>
-
-<!-- App -->
-<div id="app" class="app" style="display:none">
-
-  <header class="header">
-    <div class="header-inner">
-      <div class="header-brand">
-        <span class="header-icon">🤖</span>
-        <div>
-          <span class="header-title">KI-Dashboard</span>
-          <span class="header-sub">DIHAG Gruppe</span>
-        </div>
-      </div>
-      <div class="header-user">
-        <span id="user-name" class="user-name"></span>
-        <span id="gremium-badge" class="gremium-badge hidden">Gremium</span>
-        <button id="btn-refresh" class="btn btn-ghost btn-sm refresh-btn" onclick="refreshCurrentView()" title="Daten aktualisieren">↻</button>
-        <button class="btn btn-ghost btn-sm" onclick="logout()">Abmelden</button>
-      </div>
-    </div>
-  </header>
-
-  <nav class="nav-tabs">
-    <button class="nav-tab" data-view="antrag" onclick="switchView('antrag')">
-      📝 Neuer Antrag
-    </button>
-    <button class="nav-tab active" data-view="antraege" onclick="switchView('antraege')">
-      📋 Anträge
-      <span id="badge-open" class="tab-badge hidden"></span>
-    </button>
-    <button class="nav-tab" data-view="lizenzen" onclick="switchView('lizenzen')">
-      🔑 Lizenzen
-    </button>
-    <button class="nav-tab" data-view="register" onclick="switchView('register')">
-      📚 KI-Register
-    </button>
-    <button class="nav-tab" id="tab-einstellungen" data-view="einstellungen" onclick="switchView('einstellungen')" style="display:none">
-      ⚙️ Einstellungen
-    </button>
-  </nav>
-
-  <main class="main">
-
-    <!-- VIEW: Neuer Antrag -->
-    <div id="view-antrag" class="view hidden">
-      <!-- #antrag-main-col: Hauptspalte (wird in Testumgebung neben KI-Vorschläge-Sidebar gestellt) -->
-      <div id="antrag-main-col">
-        <div class="view-header">
-          <h2>KI-Antrag einreichen</h2>
-          <p class="view-desc">Antrag zur Freigabe eines KI-Systems gemäß Anlage 1 der KI-Richtlinie (CO-10-01). Das KI-Koordinierungsgremium prüft und entscheidet über die Freigabe.</p>
-        </div>
-        <div class="richtlinie-hint">
-          <div class="richtlinie-hint-left">
-            <span class="richtlinie-hint-icon">📋</span>
-            <div>
-              <strong>KI-Richtlinie CO-10-01 &amp; Verhaltenskodex CO-01-01</strong>
-              <span>Bitte füllen Sie den Antrag gemäß der geltenden DIHAG-KI-Richtlinie aus (Version 1.0, Inkrafttreten 01.06.2026).</span>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
-            <button class="btn btn-neutral btn-sm" style="font-weight:700;color:#1e2939" onclick="openRichtlinieModal()">KI-Richtlinie →</button>
-            <button class="btn btn-neutral btn-sm" style="font-weight:700;color:#1e2939" onclick="openVerhaltenskodexModal()">Verhaltenskodex →</button>
-          </div>
-        </div>
-        <div id="antrag-success" class="success-banner hidden"></div>
-        <form id="form-antrag" class="form-card" onsubmit="submitAntrag(event)" novalidate>
-          <div id="form-antrag-fields"></div>
-          <div class="form-footer">
-            <button type="submit" class="btn btn-primary" id="btn-submit">Antrag einreichen</button>
-          </div>
-        </form>
-      </div>
-      <!-- KI-Vorschläge-Sidebar wird per JS in Testumgebung hier eingefügt -->
-    </div>
-
-    <!-- VIEW: Anträge -->
-    <div id="view-antraege" class="view active">
-      <div class="view-header-row">
-        <div>
-          <h2>KI-Anträge</h2>
-          <p id="antraege-sub" class="view-desc"></p>
-        </div>
-        <div class="toolbar">
-          <input type="search" id="search-antraege" class="filter-search" placeholder="🔍 Suchen…" oninput="searchAntraege()">
-          <select id="filter-status" class="filter-select" onchange="filterAntraege()">
-            <option value="">Alle Status</option>
-            <option value="Eingereicht">Eingereicht</option>
-            <option value="In Prüfung">In Prüfung</option>
-            <option value="Genehmigt">Genehmigt</option>
-            <option value="Abgelehnt">Abgelehnt</option>
-            <option value="Rückfrage">Rückfrage</option>
-          </select>
-          <select id="filter-risk" class="filter-select" onchange="filterAntraege()">
-            <option value="">Alle Risiken</option>
-            <option value="Geringes Risiko">Geringes Risiko</option>
-            <option value="Normales Risiko">Normales Risiko</option>
-            <option value="Hohes Risiko">Hohes Risiko</option>
-            <option value="Verboten">Verboten</option>
-          </select>
-          <button class="btn btn-ghost btn-sm refresh-btn" onclick="refreshCurrentView()" title="Anträge aktualisieren">↻</button>
-        </div>
-      </div>
-      <div id="antraege-loading" class="loading-state">Lade Anträge …</div>
-      <div id="antraege-list" class="card-grid"></div>
-    </div>
-
-    <!-- VIEW: KI-Register -->
-    <div id="view-register" class="view hidden">
-      <div class="view-header-row">
-        <div>
-          <h2>KI-Register</h2>
-          <p class="view-desc">Alle freigegebenen KI-Systeme der DIHAG-Gruppe</p>
-        </div>
-        <div class="toolbar">
-          <input type="search" id="search-register" class="filter-search" placeholder="🔍 Suchen…" oninput="searchRegister()">
-          <select id="reg-filter-nutzer" class="filter-select" onchange="filterRegister()">
-            <option value="">Alle Nutzer</option>
-          </select>
-          <select id="reg-filter-risk" class="filter-select" onchange="filterRegister()">
-            <option value="">Alle Risiken</option>
-            <option value="Geringes Risiko">Geringes Risiko</option>
-            <option value="Normales Risiko">Normales Risiko</option>
-            <option value="Hohes Risiko">Hohes Risiko</option>
-            <option value="Verboten">Verboten</option>
-          </select>
-        </div>
-      </div>
-      <div id="register-loading" class="loading-state">Lade KI-Register …</div>
-      <div id="register-wrap"></div>
-    </div>
-
-    <!-- VIEW: Einstellungen (nur Gremium) -->
-    <div id="view-einstellungen" class="view hidden">
-      <div class="view-header">
-        <h2>⚙️ Einstellungen</h2>
-        <p class="view-desc">Administrative Konfiguration des KI-Genehmigungssystems – Genehmiger verwalten und E-Mail-Benachrichtigungen einrichten.</p>
-      </div>
-      <div id="einstellungen-body"></div>
-    </div>
-
-    <!-- VIEW: Lizenzen -->
-    <div id="view-lizenzen" class="view hidden">
-      <div class="view-header-row">
-        <div>
-          <h2>Lizenzmanagement</h2>
-          <p class="view-desc">Alle KI-Lizenzen der DIHAG-Gruppe</p>
-        </div>
-        <div class="toolbar">
-          <input type="search" id="search-lizenzen" class="filter-search" placeholder="🔍 Suchen…" oninput="searchLizenzen()">
-          <select id="filter-lizenztyp" class="filter-select" onchange="renderLizenzen()">
-            <option value="">Alle Typen</option>
-            <option value="Enterprise">Enterprise</option>
-            <option value="Team">Team</option>
-            <option value="Pro">Pro</option>
-            <option value="Free">Free</option>
-            <option value="API">API</option>
-            <option value="Sonstiges">Sonstiges</option>
-          </select>
-          <select id="filter-ablauf" class="filter-select" onchange="renderLizenzen()">
-            <option value="">Alle Ablaufdaten</option>
-            <option value="30">Ablauf ≤ 30 Tage</option>
-            <option value="60">Ablauf ≤ 60 Tage</option>
-            <option value="90">Ablauf ≤ 90 Tage</option>
-            <option value="expired">Abgelaufen</option>
-          </select>
-          <button class="btn btn-primary btn-sm" onclick="openLizenzModal()">+ Neue Lizenz</button>
-        </div>
-      </div>
-      <div id="lizenzen-loading" class="loading-state">Lade Lizenzen …</div>
-      <div id="lizenzen-wrap"></div>
-    </div>
-
-  </main>
-
-  <!-- Side Panel -->
-  <div id="panel-overlay" class="panel-overlay hidden" onclick="closePanel()"></div>
-  <aside id="side-panel" class="side-panel hidden">
-    <div class="panel-header">
-      <div id="panel-title" class="panel-title"></div>
-      <div class="panel-header-btns">
-        <button id="btn-panel-refresh" class="panel-close refresh-btn" onclick="refreshPanel()" title="Antrag neu laden">↻</button>
-        <button class="panel-close" onclick="closePanel()">✕</button>
-      </div>
-    </div>
-    <div id="panel-body" class="panel-body"></div>
-  </aside>
-
-  <!-- Modal -->
-  <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal(event)">
-    <div class="modal-card" id="modal-card" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span id="modal-title" class="modal-title"></span>
-        <button class="modal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div id="modal-body" class="modal-body"></div>
-    </div>
-  </div>
-
-</div>
-
-<script src="app.js"></script>
+  <div class="icon">🤖</div>
+  <h1>Das KI-Dashboard ist umgezogen</h1>
+  <p>Es ist jetzt Teil des DIHAG Richtlinienmanagements. Sie werden automatisch weitergeleitet …</p>
+  <a class="btn" id="target-link" href="https://richtlinienmanagement.dihag-extern.com/ki/">Zum KI-Dashboard →</a>
+  <script>
+    // Weiterleitung inkl. Query-Übernahme: Deep-Links wie ?antrag=123 aus alten
+    // E-Mails funktionieren am neuen Standort weiter. Die alte Testumgebung
+    // leitet auf den Demo-Modus (?demo=1) um.
+    (function () {
+      var target = new URL('https://richtlinienmanagement.dihag-extern.com/ki/');
+      var params = new URLSearchParams(location.search);
+      if (location.pathname.indexOf('/ki-dashboard-test') === 0) params.set('demo', '1');
+      var qs = params.toString();
+      if (qs) target.search = qs;
+      document.getElementById('target-link').href = target.href;
+      location.replace(target.href);
+    })();
+  </script>
 </body>
 </html>
