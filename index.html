@@ -6,7 +6,7 @@
   <title>DIHAG · KI-Dashboard ist umgezogen</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>"/>
   <!-- Fallback ohne JavaScript (ohne Query-Übernahme) -->
-  <meta http-equiv="refresh" content="3;url=https://richtlinienmanagement.dihag-extern.com/ki/"/>
+  <meta http-equiv="refresh" content="3;url=https://rms.dihag.de/ki/"/>
   <style>
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1e2939;
            display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -22,13 +22,13 @@
   <div class="icon">🤖</div>
   <h1>Das KI-Dashboard ist umgezogen</h1>
   <p>Es ist jetzt Teil des DIHAG Richtlinienmanagements. Sie werden automatisch weitergeleitet …</p>
-  <a class="btn" id="target-link" href="https://richtlinienmanagement.dihag-extern.com/ki/">Zum KI-Dashboard →</a>
+  <a class="btn" id="target-link" href="https://rms.dihag.de/ki/">Zum KI-Dashboard →</a>
   <script>
     // Weiterleitung inkl. Query-Übernahme: Deep-Links wie ?antrag=123 aus alten
     // E-Mails funktionieren am neuen Standort weiter. Die alte Testumgebung
     // leitet auf den Demo-Modus (?demo=1) um.
     (function () {
-      var target = new URL('https://richtlinienmanagement.dihag-extern.com/ki/');
+      var target = new URL('https://rms.dihag.de/ki/');
       var params = new URLSearchParams(location.search);
       if (location.pathname.indexOf('/ki-dashboard-test') === 0) params.set('demo', '1');
       var qs = params.toString();
